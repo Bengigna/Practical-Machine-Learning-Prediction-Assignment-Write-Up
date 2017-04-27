@@ -1,0 +1,160 @@
+---
+title: "Peer Assignment: Prediction Assignment Write Up"
+author: "Benhur Tedros"
+date: "April 24, 2017"
+output: html_document
+---
+
+# Prediction Assignment
+## 1) Introduction
+
+People use devices such as Jawbone Up, Nike FuelBand, and Fitbit to collect a large amount of data about personal activity relatively inexpensively. Reguraly, people one thing they often do is to quantify how much of their particular activity is, but they rarely quantify how well they do it. The goal of this project was to use the data from accelerometes on the belt,forearm,arm and dumbell of 6 participants, and predict the manner in which the 6 participants performed some exercise.They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. Analysis and prediction from the dataset given were carried out to predict the manner in which they did the exercise. The machine learning algorithm described below were applied to 20 test cases stored in the testing dataset to achieve the objective of this assignment.
+
+More information is available from the website here: [http://groupware.les.inf.puc-rio.br/har]http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+### Loading the packages needed for this project [setting up the environment]
+
+
+```{r set up, echo=TRUE}
+
+library(AppliedPredictiveModeling)
+library(caret)
+library(randomForest)
+library(rpart)
+library(ElemStatLearn)
+library(ggplot2)
+library(gbm)
+library(e1071)
+library(corrplot)
+
+```
+
+### Loading the data
+
+```{r read data, echo=TRUE}
+
+  datTraining = read.csv("F:\\BENHUR FOLDER\\Coursera\\Practical Machine Learning\\week 4\\pml-training.csv",na.strings=c("NA","#DIV/0!"))
+  datTesting= read.csv("F:\\BENHUR FOLDER\\Coursera\\Practical Machine Learning\\week 4\\pml-testing.csv",na.strings=c("NA","#DIV/0!"))
+  
+```
+## 2) Data partitions
+
+Creating partitions from the training dataset (70% for training and 30% for validating)
+
+```{r partition,echo=TRUE}
+
+inTrain<-createDataPartition(datTraining$classe,p=0.7,list=FALSE)
+Training<-datTraining[inTrain,]
+validating<-datTraining[-inTrain,]
+
+
+```
+## 3) Data Exploring and Cleaning
+
+```{r exploring data,echo=TRUE}
+
+dim(Training)
+dim(validating)
+
+table(Training$classe)
+
+```
+
+The training dataset contains 13737 observations with 160 variables. When seeing the classe variable [our target variable], the most abundant classe is classe A. 
+
+The next step is cleaning the data. Variables which are not directly influence/related to the classe variable was removed. I got rid off the variables with NA values,time related variables and columns such as "x","user_name" 
+
+### A) Cleaning training dataset
+```{r clean data, echo=TRUE}
+TotalNa<-sapply(1:dim(Training)[2],function(x)sum(is.na(Training[,x])))
+listNA<-which(TotalNa>0)
+colnames(Training[,c(1:7)])
+
+## training set without NAs and other not needed coloumns
+Training<-Training[,-listNA]
+Training<-Training[,-c(1:7)]
+
+## setting up the classe variable as factor variable
+Training$classe<-as.factor(Training$classe)
+```
+
+### B) Cleaning validating and testing datasets
+
+```{r remove, echo=TRUE}
+
+## validating and testing datasets were treated in the same way as the training dataset
+
+validating<-validating[,-listNA]
+validating<-validating[,-c(1:7)]
+
+Testing<-datTesting[,-listNA]
+Testing<-datTesting[,-c(1:7)]
+
+dim(Testing)
+```
+
+## 4) Correlation Analysis
+
+Before proceeding to building the model, correlation analysis among the variables were conducted.
+
+```{r correlation, echo=TRUE}
+
+matrix_cor<-cor(Training[,-53])
+corrplot(matrix_cor,method="square",type="lower",order="FPC",tl.cex = 0.5,tl.col=rgb(0,0,0))
+
+```
+
+As observed in the correlation plot, more darker colors refer to the highly correlated variables. since the correlation among the variables seems quite few, no PCA (principal component analysis) were utilized as part of preProcessing step.
+
+## 5) Model Building using Cross Validation
+
+Since the problem in hand is a classification related matter, a classification tree algorithm with random forest were utilized to do the prediction. A trainControl function were used to specify the type of resampling. 
+
+```{r model, echo=TRUE}
+
+set.seed(1234)
+fitcontrol<-trainControl(method="cv",number=3, allowParallel = TRUE,verboseIter = TRUE)
+
+## To fit the model using repeated cross-validation
+
+FitRF<-train(classe~.,data=Training,method="rf",trControl=fitcontrol)
+FitTree<-train(classe~.,data=Training,method="rpart",trControl=fitcontrol)
+
+```
+
+## 6) Model Evaluate
+
+The performance of these two models can be checked on the validating dataset.
+
+```{r evaluate, echo=TRUE}
+
+pred_RF<-predict(FitRF,validating)
+pred_Tree<-predict(FitTree,validating)
+
+confusionMatrix(pred_RF,validating$classe)
+confusionMatrix(pred_Tree,validating$classe)
+```
+
+As the result above shows, the random forest model appears to have the better accuracy and was used on the testing dataset for prediction.
+
+## 7) Conclusion
+
+The random forest model was selected and applied to the testing dataset
+
+```{r model test, echo=TRUE}
+
+predtest_RF<-predict(FitRF,Testing)
+predtest_RF
+
+
+## to create files for the answers
+
+File_Write = function(y){
+  n = length(y)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(y[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+File_Write(predtest_RF)
+```
